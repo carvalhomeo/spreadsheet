@@ -2,34 +2,57 @@
 
 import InputCell from '@/components/ui/InputCell'
 import { dataAtom } from '@/context'
+import { useInterval } from '@/hooks/useInterval'
+import { getStatus, saveData } from '@/services/api'
+import { convertToCSV } from '@/utils'
+import { useMutation } from '@tanstack/react-query'
 import { useAtom } from 'jotai'
-import { Search } from 'lucide-react'
-import { useEffect } from 'react'
+import { MinusCircle, PlusCircle, Search } from 'lucide-react'
+import { useState } from 'react'
 
 export default function Home() {
-  // const [hasError, SetHasError] = useState<boolean>(true)
-  // const [editing] = useState<boolean>(false)
+  const [error, setError] = useState<boolean>(false)
+  const [editing, setIsEditing] = useState<number | undefined>(undefined)
   const [data, setData] = useAtom(dataAtom)
+  const { mutate } = useMutation({
+    mutationFn: saveData,
+    onSuccess: (data) => {
+      if (data.status === 'IN_PROGRESS') {
+        const sec = new Date(data.done_at).getTime() - new Date().getTime()
 
-  // useEffect(() => {
-  //   setData([
-  //     [
-  //       { id: 'A1', value: '1' },
-  //       { id: 'B1', value: '2' },
-  //       { id: 'C1', value: '3' },
-  //     ],
-  //     [
-  //       { id: 'A2', value: '10' },
-  //       { id: 'B2', value: '20' },
-  //       { id: 'C2', value: '30' },
-  //     ],
-  //     [
-  //       { id: 'A3', value: '100' },
-  //       { id: 'B3', value: '200' },
-  //       { id: 'C3', value: '300' },
-  //     ],
-  //   ])
-  // }, [setData])
+        setTimeout(() => {
+          getStatus(data.id)
+        }, sec + 1)
+      }
+      setError(false)
+    },
+    onError: () => {
+      setError(true)
+    },
+  })
+  const cols = ['A', 'B', 'C']
+
+  useInterval(() => {
+    mutate(convertToCSV(data))
+  }, 20000)
+
+  const handleAddRow = () => {
+    setData((oldState) => [
+      ...oldState,
+      [
+        { id: `A${oldState.length + 1}`, value: '' },
+        { id: `B${oldState.length + 1}`, value: '' },
+        { id: `C${oldState.length + 1}`, value: '' },
+      ],
+    ])
+  }
+
+  const handleRemoveLastRow = () => {
+    setData((oldState) => {
+      const [, ...rest] = oldState.reverse()
+      return rest.reverse()
+    })
+  }
 
   return (
     <main className="flex h-screen flex-col items-center gap-4 pt-16">
@@ -46,66 +69,64 @@ export default function Home() {
       </div>
 
       <div className="flex w-[615px] flex-col">
-        <table className="border-separate border-spacing-y-1">
+        <table
+          className={`${
+            error
+              ? 'rounded-md border-[1px] border-[#AF3434] border-opacity-100'
+              : 'border-opacity-0'
+          } border-separate border-spacing-y-1 transform transition-all ease-in`}
+        >
           <thead className="h-8 bg-[#EFEFEF]">
             <tr className="border-collapse divide-x">
-              <th className="font-medium first:rounded-bl-md first:rounded-tl-md last:rounded-br-md last:rounded-tr-md">
-                A
-              </th>
-              <th className="font-medium first:rounded-bl-md first:rounded-tl-md last:rounded-br-md last:rounded-tr-md">
-                B
-              </th>
-              <th className="font-medium first:rounded-bl-md first:rounded-tl-md last:rounded-br-md last:rounded-tr-md">
-                C
-              </th>
+              {cols.map((col) => (
+                <th
+                  key={col}
+                  className="font-medium first:rounded-bl-md first:rounded-tl-md last:rounded-br-md last:rounded-tr-md"
+                >
+                  {col}
+                </th>
+              ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody data-testid="table-rows">
             {data.map((row, index) => (
-              <tr key={index} className="divide-x bg-[#FAFAFA]">
+              <tr
+                key={index}
+                className={`divide-x bg-[#FAFAFA] ${
+                  editing === index ? 'shadow-all' : 'shadow-none'
+                }`}
+              >
                 {row.map((cell) => (
-                  <InputCell key={cell.id} cell={cell} />
+                  <InputCell
+                    key={cell.id}
+                    cell={cell}
+                    onEdit={() => setIsEditing(index)}
+                    onBlur={() => setIsEditing(undefined)}
+                  />
                 ))}
               </tr>
             ))}
-            {/* <tr
-              className={`divide-x bg-[#FAFAFA] ${
-                editing ? 'shadow-all' : 'shadow-none'
-              }`}
-            >
-              <InputCell value={1} />
-              <InputCell value={200} />
-              <InputCell value={3} />
-            </tr> */}
-            {/* <tr
-              className={`divide-x bg-[#FAFAFA] ${
-                editing ? 'shadow-none' : 'shadow-none'
-              }`}
-            >
-              <InputCell value={4} />
-              <InputCell value={5} />
-              <InputCell value={6} />
-            </tr>
-            <tr
-              className={`divide-x bg-[#FAFAFA] ${
-                editing ? 'shadow-none' : 'shadow-none'
-              }`}
-            >
-              <InputCell value={4} />
-              <InputCell value={5} />
-              <InputCell value={6} />
-            </tr>
-            <tr
-              className={`divide-x bg-[#FAFAFA] ${
-                editing ? 'shadow-none' : 'shadow-none'
-              }`}
-            >
-              <InputCell value={4} />
-              <InputCell value={5} />
-              <InputCell value={6} />
-            </tr> */}
           </tbody>
         </table>
+        <div className="relative flex items-center justify-center">
+          <button
+            type="button"
+            onClick={handleAddRow}
+            data-testid="add-row-btn"
+          >
+            <PlusCircle className="absolute -left-8 top-1 text-gray-400" />
+          </button>
+
+          <div className="absolute -left-2 top-4 h-[1px] w-[633px] bg-gray-400" />
+
+          <button
+            type="button"
+            onClick={handleRemoveLastRow}
+            data-testid="remove-row-btn"
+          >
+            <MinusCircle className="absolute left-[625px] top-1 text-gray-400" />
+          </button>
+        </div>
       </div>
     </main>
   )
